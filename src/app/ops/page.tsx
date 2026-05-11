@@ -1,53 +1,57 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Send, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { OrderData } from '@/types';
 
 export default function DailyOpsPage() {
   const [text, setText] = useState('');
-  const [isParsing, setIsParsing] = useState(false);
-  const [parsedOrders, setParsedOrders] = useState<any[]>([]);
-  const [status, setStatus] = useState<any>(null);
+  const [parsedOrders, setParsedOrders] = useState<OrderData[]>([]);
+  const [status, setStatus] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const queryClient = useQueryClient();
 
-  const handleParse = async () => {
-    if (!text.trim()) return;
-    setIsParsing(true);
-    try {
+  const parseMutation = useMutation({
+    mutationFn: async (input: string) => {
       const res = await fetch('/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: input }),
       });
-      const data = await res.json();
+      if (!res.ok) throw new Error('Parse failed');
+      return res.json();
+    },
+    onSuccess: (data) => {
       setParsedOrders(data);
       setStatus({ type: 'success', message: `Successfully parsed ${data.length} orders.` });
-    } catch (error) {
+    },
+    onError: () => {
       setStatus({ type: 'error', message: 'Failed to parse text. Please try again.' });
-    } finally {
-      setIsParsing(false);
     }
-  };
+  });
 
-  const handleConfirm = async () => {
-    setIsParsing(true);
-    try {
+  const confirmMutation = useMutation({
+    mutationFn: async (orders: OrderData[]) => {
       const res = await fetch('/api/orders/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: parsedOrders }),
+        body: JSON.stringify({ orders }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setStatus({ type: 'success', message: `Confirmed ${data.count} orders. Written to database.` });
-        setParsedOrders([]);
-        setText('');
-      }
-    } catch (error) {
+      if (!res.ok) throw new Error('Confirm failed');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setStatus({ type: 'success', message: `Confirmed ${data.count} orders. Written to database.` });
+      setParsedOrders([]);
+      setText('');
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+    onError: () => {
       setStatus({ type: 'error', message: 'Failed to confirm orders.' });
-    } finally {
-      setIsParsing(false);
     }
-  };
+  });
+
+  const isBusy = parseMutation.isPending || confirmMutation.isPending;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -60,11 +64,11 @@ export default function DailyOpsPage() {
         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <span className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Input Batch</span>
           <button
-            onClick={handleParse}
-            disabled={isParsing || !text}
+            onClick={() => parseMutation.mutate(text)}
+            disabled={isBusy || !text}
             className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-all"
           >
-            {isParsing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {parseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             Parse with Claude
           </button>
         </div>
@@ -88,9 +92,11 @@ export default function DailyOpsPage() {
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-semibold text-slate-900">Review Orders ({parsedOrders.length})</h2>
             <button
-              onClick={handleConfirm}
-              className="bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-emerald-700 transition-all shadow-md"
+              onClick={() => confirmMutation.mutate(parsedOrders)}
+              disabled={confirmMutation.isPending}
+              className="bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-md flex items-center gap-2"
             >
+              {confirmMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               Confirm All & Sync
             </button>
           </div>
@@ -108,7 +114,7 @@ export default function DailyOpsPage() {
 
                 <div className="flex gap-2 flex-wrap">
                    <span className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded text-xs font-semibold">{order.designCode}</span>
-                   <span className="px-2 py-1 bg-amber-50 text-am-700 border border-amber-100 rounded text-xs font-semibold">Size {order.size}</span>
+                   <span className="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-100 rounded text-xs font-semibold">Size {order.size}</span>
                 </div>
 
                 <div className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">

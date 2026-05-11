@@ -7,7 +7,27 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: 'v4', auth });
 
-export async function appendOrderToSheet(spreadsheetId: string, order: any) {
+interface SyncOrder {
+  orderRef: string;
+  customer: {
+    name: string | null;
+    phone: string;
+    fullAddress: string | null;
+    city: string | null;
+    state: string | null;
+    pincode: string | null;
+  };
+  items: {
+    sku: {
+      code: string;
+      size: string;
+    };
+  }[];
+  senderName: string | null;
+  senderPhone: string | null;
+}
+
+export async function appendOrderToSheet(spreadsheetId: string, order: SyncOrder) {
   try {
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId,
@@ -19,8 +39,8 @@ export async function appendOrderToSheet(spreadsheetId: string, order: any) {
           order.orderRef,
           order.customer.name,
           order.customer.phone,
-          order.items.map((i: any) => i.sku.code).join('\n'),
-          order.items.map((i: any) => i.sku.size).join('\n'),
+          order.items.map((i) => i.sku.code).join('\n'),
+          order.items.map((i) => i.sku.size).join('\n'),
           order.customer.fullAddress,
           order.customer.city,
           order.customer.state,
@@ -32,8 +52,9 @@ export async function appendOrderToSheet(spreadsheetId: string, order: any) {
       },
     });
     return response.data;
-  } catch (error) {
-    console.error('Google Sheets sync error:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Google Sheets sync error:', message);
     throw error;
   }
 }
