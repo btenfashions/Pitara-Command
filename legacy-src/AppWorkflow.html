@@ -1,0 +1,10 @@
+<script>
+function gas(fn,arg,ok,fail){
+  google.script.run
+    .withSuccessHandler(function(r){
+      var d = typeof r === 'string' ? JSON.parse(r) : r;
+      ok(d);
+    })
+    .withFailureHandler(fail||function(e){console.error(e)})[fn](arg);
+}
+</script>

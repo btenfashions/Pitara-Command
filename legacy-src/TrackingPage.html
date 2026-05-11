@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head><title>Tracking</title></head>
+<body>
+  <h1>Order Tracking</h1>
+  <input id="phone" placeholder="Phone Number">
+  <button onclick="search()">Track</button>
+  <div id="results"></div>
+  <script>
+    function search(){
+      var p = document.getElementById('phone').value;
+      google.script.run.withSuccessHandler(function(r){
+        document.getElementById('results').innerText = JSON.stringify(r);
+      }).lookupPublicTracking(p);
+    }
+  </script>
+</body>
+</html>

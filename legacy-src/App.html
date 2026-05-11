@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <?!= include('AppCore'); ?>
+  </head>
+  <body class="skin-default">
+    <?!= include('AppUiShell'); ?>
+    <?!= include('AppData'); ?>
+    <?!= include('AppOrdersSupport'); ?>
+    <?!= include('AppWorkflow'); ?>
+    <?!= include('AppInventory'); ?>
+    <?!= include('AppMaster'); ?>
+    <?!= include('AppInsights'); ?>
+    <div id="toast"></div>
+    <div id="modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <div id="m-title" class="mtitle">Modal Title</div>
+            <div id="m-sub" class="msub">Subheading text</div>
+          </div>
+          <button class="mclose" onclick="closeModal(false)">✕</button>
+        </div>
+        <div id="m-prev" class="mprev"></div>
+        <div class="modal-footer">
+          <button id="m-cancel" class="btn bg" onclick="closeModal(false)">Cancel</button>
+          <button id="m-ok" class="btn bp">Confirm & Save</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

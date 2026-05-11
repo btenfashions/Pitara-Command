@@ -1,0 +1,63 @@
+<script>
+var S = {
+  pane: 'insights',
+  orders: [],
+  lots: [],
+  history: [],
+  historyBase: [],
+  ordersDirectory: [],
+  ordersDirectoryBase: [],
+  invData: null,
+  mstData: null,
+  insData: null,
+  insTab: 'sales',
+  opsTab: 'orders',
+  opsFilter: '',
+  undoStack: [],
+  _locks: {},
+  _cache: {},
+  _reqSeq: {},
+  confirmed: 0,
+  testMode: false,
+  charts: {}
+};
+
+function ge(id){return document.getElementById(id)}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function jsq(s){return "'"+String(s||'').replace(/'/g,"\'")+"'"}
+function num(n){return Number(n||0).toLocaleString('en-IN')}
+function pad(n){return String(n).padStart(2,'0')}
+
+function prs(raw){
+  if(typeof raw==='string'){
+    try{return JSON.parse(raw)}catch(e){return {success:false,error:raw}}
+  }
+  return raw;
+}
+
+function parse(r){return r}
+
+function smartTitleCaseText(str){
+  if(!str)return'';
+  return str.toLowerCase().split(' ').map(function(word){
+    return word.charAt(0).toUpperCase()+word.slice(1);
+  }).join(' ');
+}
+
+function formatLocalDateInput(d){
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+
+function currentIsoDate(){return formatLocalDateInput(new Date())}
+
+const CACHE_TTL = {
+  short: 5 * 60 * 1000,
+  normal: 30 * 60 * 1000,
+  long: 4 * 60 * 60 * 1000
+};
+
+function FULL_SKU_OK(s){return /^[A-Z]{2}\d{6}[A-Z](\d{2})?\d{2}$/.test(s)}
+function BASE_SKU_OK(s){return /^[A-Z]{2}\d{6}[A-Z](\d{2})?$/.test(s)}
+function SKU_OK(s){return BASE_SKU_OK(s) || FULL_SKU_OK(s)}
+function SKU_BASE_CODE(s){return s.substring(0, s.length-2)}
+</script>

@@ -1,0 +1,11 @@
+<script>
+function loadInventory(){
+  gas('getInventoryData', undefined, function(d){
+    S.invData = d;
+    renderInventory(d);
+  });
+}
+function renderInventory(data){
+  // Logic to render inventory table
+}
+</script>

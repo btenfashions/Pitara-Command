@@ -1,0 +1,372 @@
+<script>
+function warmInterfaceTask(key,delay,run){
+  if(!S._warmTasks)S._warmTasks={};
+  if(S._warmTasks[key])return;
+  S._warmTasks[key]=window.setTimeout(function(){
+    try{run()}catch(_){}
+  },delay||0);
+}
+
+function startInterfaceWarmup(){
+  return;
+  if(S._warmStarted)return;
+  S._warmStarted=true;
+  warmInterfaceTask('inventory',160,function(){
+    if(typeof setPaneActivity==='function')setPaneActivity('inventory','warming','Warming Inventory');
+    if(!S.invData&&typeof loadInventory==='function')loadInventory();
+  });
+  warmInterfaceTask('master',420,function(){
+    if(typeof setPaneActivity==='function')setPaneActivity('master','warming','Warming Master');
+    if(!S.mstData&&typeof loadMaster==='function')loadMaster();
+  });
+  warmInterfaceTask('history',760,function(){
+    if(typeof setPaneActivity==='function')setPaneActivity('orders-history','warming','Warming History');
+    if(typeof loadOrderHistory==='function'&&!S.historyBase.length)loadOrderHistory(S.historyQuery||'');
+  });
+  warmInterfaceTask('orders-directory',980,function(){
+    if(typeof setPaneActivity==='function')setPaneActivity('orders','warming','Warming Orders');
+    if(typeof loadOrdersModule==='function'&&!S.ordersDirectoryBase.length)loadOrdersModule(false,S.ordersQuery||'');
+  });
+}
+
+function loadInsights(){
+  runCachedLoad({
+    loadingFlag:'_insightsLoading',
+    cacheBucket:'insights',
+    cacheKey:function(){return JSON.stringify(S.range||{});},
+    maxAgeMs:CACHE_TTL.normal,
+    gasMethod:'getInsightsData',
+    gasPayload:JSON.stringify(S.range),
+    onMemory:function(){},
+    onPersistent:function(cached){
+      S.insData=cached;
+      ge('ins-loader').style.display='none';
+      ge('ins-'+S.insTab).style.display='';
+      renderInsightsTab(S.insTab,S.insData);
+      ge('conn').textContent='Warm — '+(S.insData.orders||[]).length+' orders';
+      if(typeof setPaneActivity==='function')setPaneActivity('insights','warm','Insights Cached');
+    },
+    onLoadStart:function(){
+      if(typeof setPaneActivity==='function')setPaneActivity('insights','loading','Loading Insights');
+      ge('ins-loader').style.display='flex';
+      ['sales','products','customers','financials'].forEach(function(t){var e=ge('ins-'+t);if(e)e.style.display='none'});
+    },
+    onLive:function(d){
+      S.insData=d;
+      ge('ins-loader').style.display='none';
+      ge('ins-'+S.insTab).style.display='';
+      renderInsightsTab(S.insTab,d);
+      ge('conn').textContent='Live — '+(d.orders||[]).length+' orders';
+      if(typeof setPaneActivity==='function')setPaneActivity('insights','warm','Insights Live');
+    },
+    onError:function(e){
+      ge('ins-loader').style.display='none';
+      if(typeof setPaneActivity==='function')setPaneActivity('insights','idle','Insights Idle');
+      toast(e&&e.message?e.message:String(e),'er');
+    }
+  });
+}
+
+function renderInsightsTab(tab,data){
+  var orders=data.orders||[], costMap=data.costMap||{};
+  if(tab==='sales')      renderSales(orders);
+  if(tab==='products')   renderProducts(orders);
+  if(tab==='customers')  renderCustomers(orders);
+  if(tab==='financials') renderFinancials(orders,costMap);
+}
+
+function insightIsoDate(value){
+  var s=String(value||'').trim();
+  if(!s)return'';
+  return s.substring(0,10);
+}
+
+function insightDateKeys(filled){
+  var from=S.range&&S.range.from, to=S.range&&S.range.to;
+  var start=from?new Date(from+"T00:00:00"):null;
+  var end=to?new Date(to+"T00:00:00"):null;
+  if(start&&end&&!isNaN(start.getTime())&&!isNaN(end.getTime())&&start<=end){
+    var out=[];
+    for(var d=new Date(start.getTime());d<=end;d.setDate(d.getDate()+1)){
+      out.push(formatLocalDateInput(d));
+    }
+    return out;
+  }
+  return Object.keys(filled||{}).sort();
+}
+
+function dLbl(key){
+  var d=new Date(String(key||'')+'T00:00:00');
+  if(isNaN(d.getTime()))return key;
+  return pad(d.getDate())+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+}
+
+/* ── SALES ── */
+function renderSales(orders){
+  var states={},daily={},sizes={};
+  orders.forEach(function(o){
+    var state=canonicalStateText(o.state);
+    if(state)states[state]=(states[state]||0)+1;
+    var day=insightIsoDate(o.date);if(day)daily[day]=(daily[day]||0)+1;
+    (o.size||'').split(/[
+,]+/).forEach(function(s){s=s.trim();if(s&&!isNaN(s))sizes[s]=(sizes[s]||0)+1});
+  });
+  var phones={};orders.forEach(function(o){if(o.phone)phones[o.phone]=true});
+  var tSt=topN(states,1)[0];
+  ge('kpi-sales').innerHTML=
+    kpi('Total Orders',orders.length,'','tl')+
+    kpi('Unique Customers',Object.keys(phones).length,'','in')+
+    kpi('States Reached',Object.keys(states).length,'','am')+
+    kpi('Top State',tSt?tSt[0]:'—',tSt?tSt[1]+' orders':'','co');
+
+  var days=insightDateKeys(daily);
+  dc('c-orders');S.charts['c-orders']=new Chart(ge('c-orders'),{type:'line',data:{
+    labels:days.map(dLbl),
+    datasets:[{data:days.map(function(d){return daily[d]||0}),borderColor:'#1d9e75',backgroundColor:'rgba(29,158,117,.07)',borderWidth:2,pointBackgroundColor:'#1d9e75',pointRadius:3,fill:true,tension:.3}]
+  },options:co()});
+
+  var tStates=topN(states,8);
+  dc('c-states');S.charts['c-states']=new Chart(ge('c-states'),{type:'bar',data:{
+    labels:tStates.map(function(s){return s[0]}),
+    datasets:[{data:tStates.map(function(s){return s[1]}),backgroundColor:'rgba(29,158,117,.55)',borderColor:'#1d9e75',borderWidth:1,borderRadius:3}]
+  },options:co({indexAxis:'y'})});
+
+  var sArr=Object.entries(sizes).sort(function(a,b){return parseInt(a[0])-parseInt(b[0])});
+  dc('c-sizes');S.charts['c-sizes']=new Chart(ge('c-sizes'),{type:'bar',data:{
+    labels:sArr.map(function(s){return s[0]}),
+    datasets:[{data:sArr.map(function(s){return s[1]}),backgroundColor:['rgba(129,140,248,.7)','rgba(29,158,117,.7)','rgba(245,158,11,.7)','rgba(239,68,68,.6)','rgba(29,158,117,.5)','rgba(129,140,248,.5)'],borderRadius:3}]
+  },options:co()});
+}
+
+/* ── PRODUCTS ── */
+function renderProducts(orders){
+  var skus={},senders={},sku30={};
+  var now=new Date(),cutoff30=new Date();cutoff30.setDate(now.getDate()-30);
+  orders.forEach(function(o){
+    (o.designCode||'').split(/[
+,]+/).forEach(function(c){
+      c=c.trim();if(c&&SKU_OK(c)){
+        skus[c]=(skus[c]||0)+1;
+        if(new Date(o.date)>=cutoff30)sku30[c]=(sku30[c]||0)+1;
+      }
+    });
+    if(o.senderName)senders[o.senderName]=(senders[o.senderName]||0)+1;
+  });
+  var tSKUs=topN(skus,10),maxS=tSKUs[0]?tSKUs[0][1]:1;
+  ge('kpi-products').innerHTML=
+    kpi('Unique SKUs',Object.keys(skus).length,'','tl')+
+    kpi('Active Resellers',Object.keys(senders).length,'','in')+
+    kpi('Top SKU',tSKUs[0]?tSKUs[0][0]:'—',tSKUs[0]?tSKUs[0][1]+' orders':'','am')+
+    kpi('Top Reseller',topN(senders,1)[0]?topN(senders,1)[0][0]:'—','','co');
+
+  ge('ins-skus').innerHTML=tSKUs.map(function(s,i){
+    var pct=Math.round(s[1]/maxS*100);
+    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bdr)">'+
+      '<span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--tx3);width:13px">'+(i+1)+'</span>'+
+      '<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--tx);flex:1">'+esc(s[0])+'</span>'+
+      '<div class="rbar-w"><div class="rbar" style="width:'+pct+'%"></div></div>'+
+      '<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--tl);width:26px;text-align:right">'+s[1]+'</span></div>';
+  }).join('')||'<div style="padding:16px;color:var(--tx3);font-size:11px;text-align:center">No SKU data</div>';
+
+  var tRes=topN(senders,8),maxR=tRes[0]?tRes[0][1]:1;
+  ge('ins-resellers').innerHTML=tRes.map(function(r,i){
+    var pct=Math.round(r[1]/maxR*100);
+    return '<div style="display:flex;align-items:center;gap:7px;padding:6px 9px;background:var(--panel2);border-radius:var(--r);border:1px solid var(--bdr);margin-bottom:4px">'+
+      '<span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--tx3);width:13px">'+(i+1)+'</span>'+
+      '<span style="font-size:11px;font-weight:500;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r[0])+'</span>'+
+      '<div class="rbar-w"><div class="rbar" style="width:'+pct+'%"></div></div>'+
+      '<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--tl);width:26px;text-align:right">'+r[1]+'</span></div>';
+  }).join('');
+
+  var vel=topN(sku30,12);
+  dc('c-velocity');S.charts['c-velocity']=new Chart(ge('c-velocity'),{type:'bar',data:{
+    labels:vel.map(function(s){return s[0]}),
+    datasets:[{data:vel.map(function(s){return s[1]}),backgroundColor:'rgba(129,140,248,.6)',borderColor:'#818cf8',borderWidth:1,borderRadius:3}]
+  },options:co()});
+}
+
+/* ── CUSTOMERS ── */
+function renderCustomers(orders){
+  var phones={};
+  orders.forEach(function(o){
+    if(!o.phone||o.phone.length<10)return;
+    if(!phones[o.phone])phones[o.phone]={name:o.customerName||'',orders:0,last:o.date,sender:o.senderName||''};
+    phones[o.phone].orders++;
+    if(o.date>phones[o.phone].last)phones[o.phone].last=o.date;
+  });
+  var all=Object.values(phones);
+  var repeat=all.filter(function(c){return c.orders>1}).length;
+  var repeatRate=all.length?Math.round(repeat/all.length*100):0;
+  var now=currentIsoDate();
+  var churnCut=new Date();churnCut.setDate(churnCut.getDate()-60);
+  var churnCutStr=formatLocalDateInput(churnCut);
+  var churned=all.filter(function(c){return c.orders>=2&&c.last<churnCutStr}).length;
+  var senders={};orders.forEach(function(o){if(o.senderName)senders[o.senderName]=(senders[o.senderName]||0)+1});
+
+  ge('kpi-customers').innerHTML=
+    kpi('Unique Customers',all.length,'','tl')+
+    kpi('Repeat Customers',repeat,repeatRate+'% repeat rate','in')+
+    kpi('Churn Watch',churned,'No order 60+ days','am')+
+    kpi('Active Resellers',Object.keys(senders).length,'','co');
+
+  var topRepeat=all.filter(function(c){return c.orders>2}).sort(function(a,b){return b.orders-a.orders}).slice(0,10);
+  ge('cust-repeat').innerHTML=topRepeat.map(function(c,i){
+    return '<div class="cust-row">'+
+      '<span class="cust-rank">'+(i+1)+'</span>'+
+      '<span class="cust-name">'+esc(c.name)+'</span>'+
+      '<span class="cust-meta">last: '+esc(c.last)+'</span>'+
+      '<span class="cust-orders">'+c.orders+'</span></div>';
+  }).join('')||'<div style="padding:16px;color:var(--tx3);font-size:11px;text-align:center">No repeat customer data</div>';
+
+  var tSenders=topN(senders,8),maxR=tSenders[0]?tSenders[0][1]:1;
+  ge('cust-resellers').innerHTML=tSenders.map(function(r){
+    var pct=Math.round(r[1]/maxR*100);
+    return '<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--bdr)">'+
+      '<span style="font-size:10px;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r[0])+'</span>'+
+      '<div class="rbar-w"><div class="rbar" style="width:'+pct+'%"></div></div>'+
+      '<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--tl);width:26px;text-align:right">'+r[1]+'</span></div>';
+  }).join('');
+
+  // New customers per month
+  var firstOrder={};
+  orders.forEach(function(o){
+    if(!o.phone||o.phone.length<10)return;
+    var mo=(o.date||'').substring(0,7);
+    if(!firstOrder[o.phone]||mo<firstOrder[o.phone])firstOrder[o.phone]=mo;
+  });
+  var newPerMonth={};
+  Object.values(firstOrder).forEach(function(mo){newPerMonth[mo]=(newPerMonth[mo]||0)+1});
+  var months=Object.keys(newPerMonth).sort().slice(-12);
+  dc('c-newcust');S.charts['c-newcust']=new Chart(ge('c-newcust'),{type:'bar',data:{
+    labels:months.map(mLbl),
+    datasets:[{data:months.map(function(m){return newPerMonth[m]}),backgroundColor:'rgba(29,158,117,.55)',borderRadius:3,label:'New customers'}]
+  },options:co()});
+
+  if(churned>0){ge('churn-bar').style.display='flex';ge('churn-msg').textContent=churned+' customers placed 2+ orders but nothing in 60+ days — worth a follow-up'}
+  else ge('churn-bar').style.display='none';
+}
+
+function financialOrderSkus(order){
+  var codes=String(order&&order.designCode||'')
+    .replace(/\s+\/\s+/g,'
+')
+    .replace(/[,\|]+/g,'
+')
+    .split(/?
++/)
+    .map(function(part){return String(part||'').trim().toUpperCase()})
+    .filter(Boolean);
+  var sizes=String(order&&order.size||'')
+    .replace(/\s+\/\s+/g,'
+')
+    .replace(/[,\|]+/g,'
+')
+    .split(/?
++/)
+    .map(function(part){return String(part||'').trim()})
+    .filter(Boolean);
+  return codes.map(function(code,idx){
+    var size=sizes[idx]||sizes[0]||'';
+    if(typeof FULL_SKU_OK==='function'&&FULL_SKU_OK(code))return code;
+    if(typeof BASE_SKU_OK==='function'&&BASE_SKU_OK(code)&&size)return code+size;
+    return code;
+  }).filter(function(code,idx,list){return !!code&&list.indexOf(code)===idx;});
+}
+
+/* ── FINANCIALS ── */
+function renderFinancials(orders,costMap){
+  var totalRev=0,knownRev=0,totalCost=0,unknownCostUnits=0,dayRev={},dayCost={},dealerRev={},skuSales={};
+  orders.forEach(function(o){
+    financialOrderSkus(o).forEach(function(c){
+      c=c.trim();if(typeof SKU_OK==='function'&&!SKU_OK(c))return;
+      var cm=costMap[c];
+      if(!cm)return;
+      var rev=parseFloat(cm.mrp)||0;
+      var unitCost=parseFloat(cm.cost)||0;
+      if(!(unitCost>0)&&rev>0&&parseFloat(cm.ratio)>0)unitCost=rev*parseFloat(cm.ratio);
+      var hasCost=!!cm.hasCost||unitCost>0;
+      var cost=hasCost?Math.round(unitCost):0;
+      totalRev+=rev;
+      if(hasCost){knownRev+=rev;totalCost+=cost}else unknownCostUnits++;
+      var day=insightIsoDate(o.date);
+      if(day){dayRev[day]=(dayRev[day]||0)+rev;if(hasCost)dayCost[day]=(dayCost[day]||0)+cost}
+      var dealer=c.substring(0,2);
+      if(!dealerRev[dealer])dealerRev[dealer]={rev:0,knownRev:0,cost:0,units:0,unknown:0};
+      dealerRev[dealer].rev+=rev;dealerRev[dealer].units++;
+      if(hasCost){dealerRev[dealer].knownRev+=rev;dealerRev[dealer].cost+=cost}else dealerRev[dealer].unknown++;
+      if(!skuSales[c])skuSales[c]={mrp:rev,cost:hasCost?unitCost:0,ratio:parseFloat(cm.ratio)||0,hasCost:hasCost,name:cm.name,units:0,rev:0,knownRev:0};
+      skuSales[c].units++;skuSales[c].rev+=rev;
+      if(hasCost)skuSales[c].knownRev+=rev;
+    });
+  });
+  var profit=knownRev-totalCost;
+  var margin=knownRev>0?Math.round(profit/knownRev*100):0;
+
+  ge('kpi-fin').innerHTML=
+    kpi('Est. Revenue','₹'+num(totalRev),'','tl')+
+    kpi('Known Cost','₹'+num(totalCost),unknownCostUnits?unknownCostUnits+' SKU sale(s) missing cost':'','co')+
+    kpi('Known Profit','₹'+num(profit),'Only where purchase cost exists','am')+
+    kpi('Known Margin',knownRev?margin+'%':'—','Missing cost excluded','in');
+
+  var days=insightDateKeys(dayRev);
+  dc('c-revcost');S.charts['c-revcost']=new Chart(ge('c-revcost'),{type:'bar',data:{
+    labels:days.map(dLbl),
+    datasets:[
+      {label:'Revenue',data:days.map(function(d){return dayRev[d]||0}),backgroundColor:'rgba(29,158,117,.6)',borderRadius:3},
+      {label:'Cost',data:days.map(function(d){return dayCost[d]||0}),backgroundColor:'rgba(239,68,68,.45)',borderRadius:3}
+    ]
+  },options:co({plugins:{legend:{display:true,labels:{color:"#8890b0",font:{size:10}}}}})});
+
+  var dealers=Object.entries(dealerRev).map(function(e){return{code:e[0],margin:e[1].knownRev>0?Math.round((e[1].knownRev-e[1].cost)/e[1].knownRev*100):null,units:e[1].units,unknown:e[1].unknown}}).filter(function(d){return d.margin!==null}).sort(function(a,b){return b.margin-a.margin}).slice(0,10);
+  dc('c-margin');S.charts['c-margin']=new Chart(ge('c-margin'),{type:'bar',data:{
+    labels:dealers.map(function(d){return d.code+(d.unknown?' *':'')}),
+    datasets:[{label:'Margin %',data:dealers.map(function(d){return d.margin}),backgroundColor:'rgba(129,140,248,.6)',borderRadius:3}]
+  },options:co()});
+
+  var topSKUs=Object.entries(skuSales).sort(function(a,b){return b[1].units-a[1].units}).slice(0,20);
+  ge('fin-sku-body').innerHTML=topSKUs.map(function(e){
+    var s=e[1];
+    var cost=parseFloat(s.cost)||0;
+    if(!(cost>0)&&parseFloat(s.mrp)>0&&parseFloat(s.ratio)>0)cost=parseFloat(s.mrp)*parseFloat(s.ratio);
+    var hasCost=!!s.hasCost||cost>0;
+    cost=hasCost?Math.round(cost):0;
+    var margin=hasCost&&s.knownRev>0?Math.round((s.knownRev-(cost*s.units))/s.knownRev*100):null;
+    return '<tr>'+
+      '<td><span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--tl)">'+esc(e[0])+'</span></td>'+
+      '<td>'+esc(s.name||'—')+'</td>'+
+      '<td style="font-family:'DM Mono',monospace">₹'+num(s.mrp)+'</td>'+
+      '<td style="font-family:'DM Mono',monospace">'+(hasCost?'₹'+num(cost):'—')+'</td>'+
+      '<td><span class="tag '+(margin===null?'t-gr':margin>40?'t-tl':margin>20?'t-am':'t-co')+'">'+(margin===null?'Unknown':margin+'%')+'</span></td>'+
+      '<td style="font-family:'DM Mono',monospace">'+s.units+'</td>'+
+      '<td style="font-family:'DM Mono',monospace">₹'+num(s.rev)+'</td>'+
+      '</tr>';
+  }).join('')||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3);font-size:11px">No financial data — SKU purchase cost is needed in SKU Master</td></tr>';
+}
+
+/* ── AI Review ── */
+function runAIReview(){
+  if(!S.insData){toast('Load Insights first','er');return}
+  var orders=S.insData.orders||[];
+  var phones={},states={},senders={};
+  orders.forEach(function(o){var state=canonicalStateText(o.state);if(o.phone)phones[o.phone]=true;if(state)states[state]=(states[state]||0)+1;if(o.senderName)senders[o.senderName]=(senders[o.senderName]||0)+1});
+  var summary={totalOrders:orders.length,dateRange:S.range.from+' to '+S.range.to,uniqueCustomers:Object.keys(phones).length,topStates:topN(states,5).map(function(s){return s[0]+':'+s[1]}).join(', '),topResellers:topN(senders,5).map(function(s){return s[0]+':'+s[1]}).join(', ')};
+  ge('aibox').style.display='block';ge('ai-txt').textContent='Analysing…';
+  gas('getAIReview',JSON.stringify(summary),function(d){ge('ai-txt').textContent=d.review||'No review.';toast('AI review ready','ok')});
+}
+
+function co(extra){
+  var css=getComputedStyle(document.documentElement);
+  var base={responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false},tooltip:{backgroundColor:css.getPropertyValue('--chart-tip').trim(),borderColor:css.getPropertyValue('--chart-tip-border').trim(),borderWidth:1,titleColor:css.getPropertyValue('--tx').trim(),bodyColor:css.getPropertyValue('--tx2').trim(),padding:8}},scales:{x:{grid:{color:css.getPropertyValue('--chart-grid').trim()},ticks:{color:css.getPropertyValue('--tx3').trim(),font:{size:9}}},y:{grid:{color:css.getPropertyValue('--chart-grid').trim()},ticks:{color:css.getPropertyValue('--tx3').trim(),font:{size:9}}}}};
+  if(extra)Object.assign(base,extra);return base;
+}
+function dc(id){if(S.charts[id]){S.charts[id].destroy();delete S.charts[id]}}
+function mLbl(m){var p=m.split('-');return['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(p[1])-1]+' '+p[0].slice(2)}
+
+function kpi(label,val,sub,color){
+  return '<div class="kcard '+color+'">'+
+    '<div class="klbl">'+label+'</div>'+
+    '<div class="kval">'+(typeof val==='number'?val.toLocaleString('en-IN'):val)+'</div>'+
+    (sub?'<div class="ksub">'+sub+'</div>':'')+
+    '</div>';
+}
+</script>
