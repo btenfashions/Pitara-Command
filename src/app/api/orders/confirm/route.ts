@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { format } from 'date-fns';
+import { OrderData } from '@/types';
+import { Prisma } from '@prisma/client';
 
 export async function POST(req: NextRequest) {
   try {
-    const { orders, operator } = await req.json();
+    const { orders } = await req.json();
 
     if (!orders || !Array.isArray(orders)) {
       return NextResponse.json({ error: 'No orders provided' }, { status: 400 });
@@ -13,8 +15,7 @@ export async function POST(req: NextRequest) {
     const results = await prisma.$transaction(async (tx) => {
       const confirmedOrders = [];
 
-      for (const orderData of orders) {
-        // 1. Find or Create Customer
+      for (const orderData of orders as OrderData[]) {
         const customer = await tx.customer.upsert({
           where: { phone: orderData.phoneNumber },
           update: {
@@ -34,7 +35,6 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // 2. Generate Order Reference (Atomic)
         const dateStr = format(new Date(), 'yyyyMMdd');
         const sequence = await tx.orderSequence.upsert({
           where: { date: dateStr },
@@ -43,7 +43,6 @@ export async function POST(req: NextRequest) {
         });
         const orderRef = `CMD-${dateStr}-${sequence.count}`;
 
-        // 3. Create Order
         const order = await tx.order.create({
           data: {
             orderRef,
@@ -63,7 +62,6 @@ export async function POST(req: NextRequest) {
           }
         });
 
-        // 4. Update Reservations
         for (const item of order.items) {
           await tx.sku.update({
             where: { id: item.skuId },
@@ -79,14 +77,20 @@ export async function POST(req: NextRequest) {
       return confirmedOrders;
     });
 
+    // Fire-and-forget sync trigger (in a full enterprise app, this would be a real queue)
+    // We call the local sync endpoint without waiting for its result.
+    const baseUrl = req.nextUrl.origin;
+    fetch(`${baseUrl}/api/sync`, { method: 'POST' }).catch(err => console.error('Background sync trigger failed:', err));
+
     return NextResponse.json({ success: true, count: results.length, orders: results });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Confirmation error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
-async function resolveOrderItems(tx: any, codes: string, sizes: string) {
+async function resolveOrderItems(tx: Prisma.TransactionClient, codes: string, sizes: string) {
   const codeLines = codes.split('\n').filter(Boolean);
   const sizeLines = sizes.split('\n').filter(Boolean);
   const items = [];

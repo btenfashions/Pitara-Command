@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Users, Search, Mail, Phone } from 'lucide-react';
+import { Users, Phone } from 'lucide-react';
 
 export default function PeoplePage() {
   return (

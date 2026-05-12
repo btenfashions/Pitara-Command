@@ -1,31 +1,35 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Search, ChevronLeft, ChevronRight, Loader2, Package } from 'lucide-react';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Sku } from '@/types';
+
+interface InventoryResponse {
+  skus: Sku[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+const fetchInventory = async (page: number, query: string): Promise<InventoryResponse> => {
+  const res = await fetch(`/api/inventory?page=${page}&query=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error('Network response was not ok');
+  return res.json();
+};
 
 export default function InventoryPage() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
 
-  const fetchInventory = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/inventory?page=${page}&query=${query}`);
-      const d = await res.json();
-      setData(d);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(fetchInventory, 300);
-    return () => clearTimeout(timer);
-  }, [page, query]);
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['inventory', page, query],
+    queryFn: () => fetchInventory(page, query),
+    placeholderData: (previousData) => previousData,
+  });
 
   return (
     <div className="space-y-6">
@@ -46,6 +50,12 @@ export default function InventoryPage() {
         </div>
       </header>
 
+      {isError && (
+        <div className="p-4 bg-rose-50 text-rose-700 border border-rose-100 rounded-lg text-sm font-medium">
+          Error loading inventory: {(error as Error).message}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -58,8 +68,8 @@ export default function InventoryPage() {
               <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
+          <tbody className="divide-y divide-slate-100 relative">
+            {isLoading && !data && (
               <tr>
                 <td colSpan={6} className="px-6 py-12 text-center">
                   <div className="flex flex-col items-center gap-2 text-slate-400">
@@ -68,9 +78,11 @@ export default function InventoryPage() {
                   </div>
                 </td>
               </tr>
-            ) : data?.skus.length > 0 ? (
-              data.skus.map((item: any) => (
-                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+            )}
+
+            {data?.skus && data.skus.length > 0 ? (
+              data.skus.map((item: Sku) => (
+                <tr key={item.id} className={`hover:bg-slate-50/50 transition-colors group ${isLoading ? 'opacity-50' : ''}`}>
                   <td className="px-6 py-4">
                     <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded tracking-tight">{item.code}</span>
                   </td>
@@ -85,11 +97,11 @@ export default function InventoryPage() {
                   </td>
                 </tr>
               ))
-            ) : (
+            ) : !isLoading ? (
               <tr>
                 <td colSpan={6} className="px-6 py-12 text-center text-slate-500 italic">No SKUs found matching your search.</td>
               </tr>
-            )}
+            ) : null}
           </tbody>
         </table>
 

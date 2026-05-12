@@ -1,13 +1,18 @@
 'use client';
 
 import React from 'react';
-import { Settings, ShieldCheck, Database, CloudSync } from 'lucide-react';
+import { ShieldCheck, CloudSync } from 'lucide-react';
 
 export default function MasterDataPage() {
   const handleSync = async () => {
-    const res = await fetch('/api/sync', { method: 'POST' });
-    const data = await res.json();
-    alert(`Sync completed: ${data.synced} synced, ${data.failed} failed.`);
+    try {
+      const res = await fetch('/api/sync', { method: 'POST' });
+      const data = await res.json();
+      alert(`Sync completed: ${data.synced} synced, ${data.failed} failed.`);
+    } catch (error) {
+      console.error(error);
+      alert('Sync failed.');
+    }
   };
 
   return (

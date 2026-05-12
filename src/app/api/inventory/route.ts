@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,11 +10,11 @@ export async function GET(req: NextRequest) {
     const query = searchParams.get('query') || '';
     const skip = (page - 1) * limit;
 
-    const where = query ? {
+    const where: Prisma.SkuWhereInput = query ? {
       OR: [
-        { code: { contains: query, mode: 'insensitive' as any } },
-        { product: { name: { contains: query, mode: 'insensitive' as any } } },
-        { product: { category: { contains: query, mode: 'insensitive' as any } } },
+        { code: { contains: query, mode: 'insensitive' } },
+        { product: { name: { contains: query, mode: 'insensitive' } } },
+        { product: { category: { contains: query, mode: 'insensitive' } } },
       ]
     } : {};
 
@@ -39,7 +40,8 @@ export async function GET(req: NextRequest) {
         totalPages: Math.ceil(total / limit),
       }
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { appendOrderToSheet } from '@/lib/google/sheets';
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   try {
     const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
     if (!spreadsheetId) {
@@ -27,9 +27,10 @@ export async function POST(req: NextRequest) {
           data: { syncStatus: 'SYNCED' }
         });
         results.synced++;
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
         results.failed++;
-        results.errors.push(`Order ${order.orderRef}: ${err.message}`);
+        results.errors.push(`Order ${order.orderRef}: ${message}`);
         await prisma.order.update({
           where: { id: order.id },
           data: { syncStatus: 'FAILED' }
@@ -38,7 +39,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(results);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

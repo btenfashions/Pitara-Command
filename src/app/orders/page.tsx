@@ -1,17 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Search, Loader2, Package, Calendar, User } from 'lucide-react';
+import React from 'react';
+import { Package } from 'lucide-react';
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // In a real app, this would fetch from /api/orders
-    setLoading(false);
-  }, []);
-
   return (
     <div className="space-y-6">
       <header>
