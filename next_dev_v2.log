@@ -1,0 +1,42 @@
+
+> pitara-app@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.0.3
+   - Local:        http://localhost:3000
+   - Environments: .env
+
+ ✓ Starting...
+> [PWA] PWA support is disabled
+> [PWA] PWA support is disabled
+ ✓ Ready in 3.8s
+ ○ Compiling / ...
+ ✓ Compiled / in 6.1s (874 modules)
+ GET / 200 in 6937ms
+ ○ Compiling /api/auth/[...nextauth] ...
+ ✓ Compiled /ops in 7.5s (1135 modules)
+ GET /ops 200 in 6896ms
+ GET /ops 200 in 26ms
+ GET /api/insights 500 in 8063ms
+[next-auth][warn][NEXTAUTH_URL]
+https://next-auth.js.org/warnings#nextauth_url
+[next-auth][warn][NO_SECRET]
+https://next-auth.js.org/warnings#no_secret
+ GET /api/auth/session 200 in 8680ms
+ GET / 200 in 183ms
+ GET /api/auth/session 200 in 51ms
+ GET /api/insights 500 in 103ms
+ GET /ops 200 in 39ms
+ ○ Compiling /inventory ...
+ ✓ Compiled /inventory in 1595ms (1158 modules)
+ GET /inventory 200 in 1734ms
+ ✓ Compiled /api/inventory in 443ms (1160 modules)
+ ✓ Compiled in 514ms (438 modules)
+ ✓ Compiled in 249ms (438 modules)
+ ⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+   ▲ Next.js 15.0.3
+   - Local:        http://localhost:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 2.1s
